@@ -7,15 +7,16 @@
     <style>
         :root { --bg-color: #121212; --card-bg: #1e1e1e; --accent: #4CAF50; --gold: #FFD700; --text: #ffffff; --text-secondary: #aaaaaa; --danger: #ff5252; --dealer-color: #2196F3; --radius: 12px; }
         body { font-family: sans-serif; background-color: var(--bg-color); color: var(--text); padding: 15px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; margin: 0; }
-        .container { width: 100%; max-width: 500px; background: var(--card-bg); padding: 20px; border-radius: var(--radius); box-shadow: 0 4px 15px rgba(0,0,0,0.5); margin-bottom: 20px; transition: all 0.3s ease; }
+        .container { width: 100%; max-width: 500px; background: var(--card-bg); padding: 20px; border-radius: var(--radius); box-shadow: 0 4px 15px rgba(0,0,0,0.5); margin-bottom: 20px; transition: all 0.3s ease; position: relative; }
         
         /* Inputs & Buttons */
         input[type="text"], input[type="number"] { width: 100%; padding: 12px; background: #2c2c2c; border: 1px solid #333; border-radius: 8px; color: white; font-size: 1rem; box-sizing: border-box; margin-bottom: 10px; }
         button { width: 100%; padding: 15px; background: var(--accent); color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: bold; cursor: pointer; margin-top: 10px; text-transform: uppercase; letter-spacing: 1px; }
         button:active { transform: scale(0.98); }
-        button.secondary { background: #444; }
+        button.secondary { background: #444; margin-top: 5px; }
         button.danger { background: var(--danger); }
-
+        button.small { padding: 8px; font-size: 0.8rem; width: auto; margin-top: 0; }
+        
         /* Typography */
         h1, h2, h3 { text-align: center; margin-top: 0; }
         .code-display { font-size: 2.5rem; letter-spacing: 5px; font-family: monospace; color: var(--accent); text-align: center; margin: 10px 0; font-weight: bold; }
@@ -25,6 +26,7 @@
         .player-row { background: #2c2c2c; padding: 10px; border-radius: 8px; display: grid; grid-template-columns: 30px 1fr auto 50px; align-items: center; gap: 10px; border-left: 4px solid transparent; margin-bottom: 8px; }
         .player-row.is-leader { border-left: 4px solid var(--gold); background: #2a2a1e; }
         .player-row.current-user { border: 1px solid var(--accent); }
+        .player-row.is-bot { opacity: 0.7; border-style: dashed; border-width: 1px; border-color: #555; }
         
         .rank-badge { background: #444; color: #fff; width: 24px; height: 24px; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 0.75rem; font-weight: bold; }
         .is-leader .rank-badge { background: var(--gold); color: #000; }
@@ -43,48 +45,99 @@
         #qr-container { display: flex; justify-content: center; margin: 15px 0; }
         #qr-container img { border-radius: 8px; border: 4px solid white; }
         
+        /* Stats & History */
         .stats-card { background: #2c2c2c; padding: 15px; margin-bottom: 10px; border-radius: 8px; text-align: center; }
         .stats-val { font-size: 1.5rem; color: var(--gold); font-weight: bold; }
+
+        .history-container { margin-top: 20px; padding-top: 20px; border-top: 1px solid #333; overflow-x: auto; }
+        table.history-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; text-align: center; }
+        .history-table th { color: var(--text-secondary); padding: 5px; border-bottom: 1px solid #444; }
+        .history-table td { padding: 8px 5px; border-bottom: 1px solid #333; color: #ddd; }
+        .history-table tr:last-child td { border-bottom: none; }
+
+        /* Modal / Overlay */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 100; display: none; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box; }
+        .modal-content { background: var(--card-bg); width: 100%; max-width: 500px; padding: 20px; border-radius: var(--radius); max-height: 80vh; overflow-y: auto; position: relative; }
+        .close-btn { position: absolute; top: 10px; right: 15px; font-size: 1.5rem; cursor: pointer; color: #888; background: none; border: none; padding: 0; width: auto; margin:0;}
+
+        /* Selectable Player List in Login */
+        .claim-btn { display: block; width: 100%; background: #333; text-align: left; padding: 12px; margin-bottom: 8px; border-radius: 8px; border: 1px solid #444; color: white; }
+        .claim-btn:hover { background: #444; border-color: var(--accent); }
     </style>
 </head>
 <body>
 
+    <div id="stats-modal" class="modal-overlay">
+        <div class="modal-content">
+            <button class="close-btn" onclick="toggleStats(false)">×</button>
+            <h2>Statistik</h2>
+            <div id="modal-stats-content"></div>
+            <button class="secondary" onclick="toggleStats(false)">Schließen</button>
+        </div>
+    </div>
+
     <div id="view-login" class="container view active">
         <h1>Scorekeeper Live</h1>
-        <input type="text" id="inp-name" placeholder="Dein Name" maxlength="12">
-        <div style="height: 20px;"></div>
-        <button onclick="createGame()">Neues Spiel erstellen</button>
-        <div style="display: flex; gap: 10px; align-items: center; margin-top: 15px;">
-            <div style="flex:1; height: 1px; background: #333;"></div>
-            <span style="color: #666; font-size: 0.8rem;">ODER</span>
-            <div style="flex:1; height: 1px; background: #333;"></div>
+        
+        <div id="claim-section" style="display:none; margin-bottom: 20px;">
+            <div class="info-text">Offline-Spieler verfügbar:</div>
+            <div id="claim-list"></div>
+            <div style="text-align: center; margin: 15px 0; color: #666;">- ODER NEU -</div>
         </div>
-        <input type="text" id="inp-code" placeholder="Raum-Code (z.B. ABCD)" style="margin-top: 15px; text-transform: uppercase;">
-        <button class="secondary" onclick="joinGame()">Beitreten</button>
+
+        <input type="text" id="inp-name" placeholder="Dein Name" maxlength="12">
+        <div style="height: 10px;"></div>
+        
+        <button id="btn-create" onclick="createGame()">Neues Spiel erstellen</button>
+        
+        <div id="join-section">
+            <div style="display: flex; gap: 10px; align-items: center; margin-top: 15px;">
+                <div style="flex:1; height: 1px; background: #333;"></div>
+                <span style="color: #666; font-size: 0.8rem;">ODER CODE</span>
+                <div style="flex:1; height: 1px; background: #333;"></div>
+            </div>
+            <input type="text" id="inp-code" placeholder="Code (z.B. ABCD)" style="margin-top: 15px; text-transform: uppercase;" oninput="checkCode()">
+            <button id="btn-join" class="secondary" onclick="joinGame()">Beitreten</button>
+        </div>
     </div>
 
     <div id="view-lobby" class="container view">
         <h2>Lobby</h2>
-        <div class="info-text">Teile den Code oder lass scannen:</div>
         <div class="code-display" id="lobby-code">ABCD</div>
         <div id="qr-container"></div>
         
         <div id="lobby-list" style="margin-top: 20px;"></div>
 
-        <button id="btn-start" onclick="startGame()" style="display: none;">Spiel starten</button>
+        <div id="host-add-player" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #333;">
+            <div style="display: flex; gap: 10px;">
+                <input type="text" id="inp-bot-name" placeholder="Name für Offline-Spieler" style="margin-bottom: 0;">
+                <button class="secondary small" onclick="addBot()" style="width: 80px;">+ Add</button>
+            </div>
+        </div>
+
+        <button id="btn-start" onclick="startGame()" style="display: none; margin-top: 20px;">Spiel starten</button>
         <div id="wait-msg" class="info-text" style="margin-top: 20px;">Warte auf Host...</div>
     </div>
 
     <div id="view-game" class="container view">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
             <h2 id="round-display" style="margin:0;">Runde 1</h2>
-            <div style="font-size: 0.8rem; background: #333; padding: 5px 10px; border-radius: 15px;">Code: <span id="game-code-display"></span></div>
+            <div>
+                <button class="secondary small" onclick="toggleStats(true)">📊 Stats</button>
+            </div>
         </div>
         
         <div id="game-list"></div>
 
         <button onclick="submitRound()">Runde eintragen</button>
-        <button class="danger" id="btn-end" onclick="finishGame()" style="margin-top: 20px; display: none; font-size: 0.8rem; padding: 10px;">Spiel beenden & Auswerten</button>
+
+        <div class="history-container">
+            <div class="info-text" style="text-align: left; font-size: 0.8rem; margin-bottom: 10px;">Verlauf</div>
+            <table class="history-table" id="history-table">
+                </table>
+        </div>
+
+        <button class="danger" id="btn-end" onclick="finishGame()" style="margin-top: 30px; display: none; font-size: 0.8rem; padding: 10px;">Spiel beenden</button>
     </div>
 
     <div id="view-stats" class="container view">
@@ -100,24 +153,27 @@
     <script>
         const socket = io();
         let currentRoom = null;
-        
-        // --- 1. REJOIN & IDENTITY LOGIC ---
-        // Wir generieren eine ID im Browser und speichern sie.
-        // So erkennt der Server uns wieder, auch wenn wir F5 drücken.
         let myPermanentId = localStorage.getItem('scorekeeper_uid');
         if (!myPermanentId) {
             myPermanentId = 'user_' + Math.random().toString(36).substr(2, 9);
             localStorage.setItem('scorekeeper_uid', myPermanentId);
         }
 
-        // Alten Namen laden
         const savedName = localStorage.getItem('scorekeeper_name');
         if (savedName) document.getElementById('inp-name').value = savedName;
 
-        // Auto-Fill Code via URL
+        // Auto-Detect Code and Check Room
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.has('room')) {
-            document.getElementById('inp-code').value = urlParams.get('room');
+            const code = urlParams.get('room');
+            document.getElementById('inp-code').value = code;
+            socket.emit('checkRoom', code); // Prüfe auf freie Offline-Spieler
+        }
+
+        // Event listener für manuelle Code Eingabe
+        function checkCode() {
+            const code = document.getElementById('inp-code').value;
+            if(code.length === 4) socket.emit('checkRoom', code.toUpperCase());
         }
 
         // --- NAVIGATION ---
@@ -126,13 +182,27 @@
             document.getElementById(viewId).classList.add('active');
         }
 
-        // --- USER ACTIONS ---
+        function toggleStats(show) {
+            const modal = document.getElementById('stats-modal');
+            modal.style.display = show ? 'flex' : 'none';
+            if(show && currentRoom) {
+                document.getElementById('modal-stats-content').innerHTML = generateStatsHtml(currentRoom);
+            }
+        }
+
+        // --- ACTIONS ---
         function createGame() {
             const name = document.getElementById('inp-name').value.trim();
             if (!name) return alert('Bitte Namen eingeben');
             localStorage.setItem('scorekeeper_name', name);
-            
             socket.emit('createGame', { hostName: name, userId: myPermanentId });
+        }
+
+        function addBot() {
+            const name = document.getElementById('inp-bot-name').value.trim();
+            if (!name) return;
+            socket.emit('addPlaceholder', { roomCode: currentRoom.code, name });
+            document.getElementById('inp-bot-name').value = '';
         }
 
         function joinGame() {
@@ -141,100 +211,86 @@
             if (!name || !code) return alert('Name und Code erforderlich');
             
             localStorage.setItem('scorekeeper_name', name);
-            socket.emit('joinGame', { 
-                roomCode: code, 
-                playerName: name, 
-                userId: myPermanentId 
-            });
+            socket.emit('joinGame', { roomCode: code, playerName: name, userId: myPermanentId });
         }
 
-        function startGame() {
-            socket.emit('startGame', currentRoom.code);
+        function claimPlayer(playerId) {
+            const code = document.getElementById('inp-code').value.trim();
+            socket.emit('claimPlayer', { roomCode: code, playerId: playerId, userId: myPermanentId });
         }
+
+        function startGame() { socket.emit('startGame', currentRoom.code); }
+        function finishGame() { if(confirm("Ende?")) socket.emit('finishGame', currentRoom.code); }
+        function restartGame() { socket.emit('restartGame', currentRoom.code); }
 
         function submitRound() {
             const inputs = document.querySelectorAll('.score-input');
             const scores = {};
             let zeroCount = 0;
-
             inputs.forEach(input => {
                 const pid = input.dataset.pid;
                 const val = input.value;
                 scores[pid] = val; 
-
                 if (val === '' || val === '0') zeroCount++;
             });
-
-            // Vorab-Check Client
-            if (zeroCount > 1) {
-                alert('Regel: Maximal eine "0" (oder leeres Feld) pro Runde!');
-                return;
-            }
-
+            if (zeroCount > 1) { alert('Nur eine "0" erlaubt!'); return; }
             socket.emit('submitRound', { roomCode: currentRoom.code, roundScores: scores });
         }
 
-        function finishGame() {
-            if(confirm("Spiel wirklich beenden?")) {
-                socket.emit('finishGame', currentRoom.code);
-            }
-        }
-
-        function restartGame() {
-            socket.emit('restartGame', currentRoom.code);
-        }
-
         // --- SOCKET EVENTS ---
-        socket.on('connect', () => {
-            // Falls wir gerade neu geladen haben und noch wissen, in welchem Raum wir waren:
-            // (Optional: Man könnte hier einen automatischen Rejoin versuchen, 
-            // aber wir lassen den User lieber "Beitreten" klicken oder nutzen den State vom Server)
+        
+        socket.on('roomInfo', ({ exists, availablePlayers }) => {
+            if (exists && availablePlayers && availablePlayers.length > 0) {
+                const list = document.getElementById('claim-list');
+                list.innerHTML = availablePlayers.map(p => 
+                    `<button class="claim-btn" onclick="claimPlayer('${p.id}')">Als <b>${p.name}</b> beitreten</button>`
+                ).join('');
+                document.getElementById('claim-section').style.display = 'block';
+                document.getElementById('btn-create').style.display = 'none'; // Verstecke Create wenn man im Join Modus ist
+            } else {
+                document.getElementById('claim-section').style.display = 'none';
+                document.getElementById('btn-create').style.display = 'block';
+            }
         });
 
         socket.on('gameCreated', ({ roomCode, qrCodeData }) => {
             document.getElementById('lobby-code').innerText = roomCode;
-            const img = document.createElement('img');
-            img.src = qrCodeData;
-            document.getElementById('qr-container').innerHTML = '';
-            document.getElementById('qr-container').appendChild(img);
+            document.getElementById('qr-container').innerHTML = `<img src="${qrCodeData}">`;
         });
 
         socket.on('errorMsg', (msg) => alert(msg));
 
         socket.on('gameState', (room) => {
             currentRoom = room;
-            
-            // Bin ich der Host? (Vergleich Permanent-ID)
             const isHost = (room.hostUserId === myPermanentId);
             
-            // Buttons steuern
+            // Host Controls
             document.getElementById('btn-start').style.display = isHost ? 'block' : 'none';
             document.getElementById('wait-msg').style.display = isHost ? 'none' : 'block';
             document.getElementById('btn-end').style.display = isHost ? 'block' : 'none';
             document.getElementById('host-controls').style.display = isHost ? 'block' : 'none';
+            document.getElementById('host-add-player').style.display = isHost ? 'block' : 'none';
 
-            // View wechseln
             if (room.status === 'lobby') {
                 showView('view-lobby');
                 renderLobby(room.players);
             } else if (room.status === 'playing') {
                 showView('view-game');
                 renderGame(room);
+                renderHistory(room);
             } else if (room.status === 'finished') {
                 showView('view-stats');
-                renderStats(room);
+                document.getElementById('stats-content').innerHTML = generateStatsHtml(room);
             }
         });
 
         // --- RENDER FUNKTIONEN ---
 
         function renderLobby(players) {
-            const list = document.getElementById('lobby-list');
-            list.innerHTML = players.map(p => `
-                <div class="player-row ${p.userId === myPermanentId ? 'current-user' : ''}">
+            document.getElementById('lobby-list').innerHTML = players.map(p => `
+                <div class="player-row ${p.userId === myPermanentId ? 'current-user' : ''} ${p.isBot ? 'is-bot' : ''}">
                     <div class="rank-badge" style="background:#555">●</div>
-                    <div>${p.name}</div>
-                    <div></div>
+                    <div>${p.name} ${p.isBot ? '<small>(offline)</small>' : ''}</div>
                 </div>
             `).join('');
             document.getElementById('lobby-code').innerText = currentRoom.code;
@@ -242,24 +298,15 @@
 
         function renderGame(room) {
             document.getElementById('round-display').innerText = `Runde ${room.round}`;
-            document.getElementById('game-code-display').innerText = room.code;
-
-            // Sortierung für Anzeige (Wer führt? Wenigste Punkte)
             const sortedPlayers = [...room.players].sort((a, b) => a.total - b.total);
-            const leaderId = sortedPlayers[0]?.userId; 
-
-            // Dealer rotiert
+            const leaderId = sortedPlayers[0]?.id; // Hier Nutzung von ID, da Bots keine UserId haben
             const dealerIndex = (room.round - 1) % room.players.length;
-            // Wir müssen den Dealer basierend auf der originalen Array-Reihenfolge finden, nicht der sortierten
-            const dealerId = room.players[dealerIndex]?.userId;
+            const dealerId = room.players[dealerIndex]?.id;
 
-            const list = document.getElementById('game-list');
-            
-            // Wir rendern die Liste in der Reihenfolge des Punktestands (Golf-Style)
-            list.innerHTML = sortedPlayers.map((p, index) => {
+            document.getElementById('game-list').innerHTML = sortedPlayers.map((p, index) => {
                 const rank = index + 1;
-                const isLeader = (p.userId === leaderId);
-                const isDealer = (p.userId === dealerId);
+                const isLeader = (p.id === leaderId);
+                const isDealer = (p.id === dealerId);
                 const isMe = (p.userId === myPermanentId);
                 
                 return `
@@ -276,7 +323,32 @@
             }).join('');
         }
 
-        function renderStats(room) {
+        function renderHistory(room) {
+            const table = document.getElementById('history-table');
+            // Header erstellen
+            let html = `<thead><tr><th style="width:30px">#</th>`;
+            room.players.forEach(p => {
+                // Nur erste 3 Buchstaben anzeigen um Platz zu sparen
+                html += `<th>${p.name.substring(0,3)}</th>`;
+            });
+            html += `</tr></thead><tbody>`;
+
+            // Zeilen erstellen (Für jede vergangene Runde)
+            for(let r = 0; r < room.round - 1; r++) {
+                html += `<tr><td>${r+1}</td>`;
+                room.players.forEach(p => {
+                    const score = p.scores[r] !== undefined ? p.scores[r] : '-';
+                    // Null hervorheben
+                    const style = score === 0 ? 'color: var(--accent); font-weight:bold;' : '';
+                    html += `<td style="${style}">${score}</td>`;
+                });
+                html += `</tr>`;
+            }
+            html += `</tbody>`;
+            table.innerHTML = html;
+        }
+
+        function generateStatsHtml(room) {
             const players = [...room.players].sort((a, b) => a.total - b.total);
             const winner = players[0];
             const loser = players[players.length - 1];
@@ -313,8 +385,7 @@
                     <div>${maxZeros}x Null</div>
                 </div>`;
             }
-
-            document.getElementById('stats-content').innerHTML = html;
+            return html;
         }
     </script>
 </body>
