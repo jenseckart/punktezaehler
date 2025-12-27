@@ -5,11 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Scorekeeper Live</title>
     <style>
-        :root { --bg-color: #121212; --card-bg: #1e1e1e; --accent: #4CAF50; --gold: #FFD700; --text: #ffffff; --text-secondary: #aaaaaa; --danger: #ff5252; --dealer-color: #2196F3; --radius: 12px; }
+        :root { --bg-color: #121212; --card-bg: #1e1e1e; --accent: #4CAF50; --text: #ffffff; --text-secondary: #aaaaaa; --danger: #ff5252; --dealer-color: #2196F3; --radius: 12px; }
+        
+        /* METALS */
+        --gold: #FFD700;
+        --silver: #E0E0E0;
+        --bronze: #CD7F32;
+
         body { font-family: sans-serif; background-color: var(--bg-color); color: var(--text); padding: 15px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; margin: 0; }
         .container { width: 100%; max-width: 500px; background: var(--card-bg); padding: 20px; border-radius: var(--radius); box-shadow: 0 4px 15px rgba(0,0,0,0.5); margin-bottom: 20px; transition: all 0.3s ease; position: relative; }
         
-        /* Inputs & Buttons */
         input[type="text"], input[type="number"] { width: 100%; padding: 12px; background: #2c2c2c; border: 1px solid #333; border-radius: 8px; color: white; font-size: 1rem; box-sizing: border-box; margin-bottom: 10px; }
         button { width: 100%; padding: 15px; background: var(--accent); color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: bold; cursor: pointer; margin-top: 10px; text-transform: uppercase; letter-spacing: 1px; }
         button:active { transform: scale(0.98); }
@@ -17,27 +22,34 @@
         button.danger { background: var(--danger); }
         button.small { padding: 8px; font-size: 0.8rem; width: auto; margin-top: 0; }
         
-        /* Typography */
         h1, h2, h3 { text-align: center; margin-top: 0; }
         .code-display { font-size: 2.5rem; letter-spacing: 5px; font-family: monospace; color: var(--accent); text-align: center; margin: 10px 0; font-weight: bold; }
         .info-text { text-align: center; color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 15px; }
 
         /* Player List Styles */
-        .player-row { background: #2c2c2c; padding: 10px; border-radius: 8px; display: grid; grid-template-columns: 30px 1fr auto 50px; align-items: center; gap: 10px; border-left: 4px solid transparent; margin-bottom: 8px; }
-        .player-row.is-leader { border-left: 4px solid var(--gold); background: #2a2a1e; }
-        .player-row.current-user { border: 1px solid var(--accent); }
+        .player-row { background: #2c2c2c; padding: 10px; border-radius: 8px; display: grid; grid-template-columns: 30px 1fr auto 60px; align-items: center; gap: 10px; border-left: 5px solid transparent; margin-bottom: 8px; transition: border-color 0.3s; }
+        
+        /* NEW: Rank Colors */
+        .player-row.rank-1 { border-left-color: var(--gold); background: linear-gradient(90deg, #2a2a1e 0%, #2c2c2c 100%); }
+        .player-row.rank-2 { border-left-color: var(--silver); }
+        .player-row.rank-3 { border-left-color: var(--bronze); }
+        
         .player-row.is-bot { opacity: 0.7; border-style: dashed; border-width: 1px; border-color: #555; }
         
         .rank-badge { background: #444; color: #fff; width: 24px; height: 24px; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 0.75rem; font-weight: bold; }
-        .is-leader .rank-badge { background: var(--gold); color: #000; }
+        .rank-1 .rank-badge { background: var(--gold); color: #000; }
+        .rank-2 .rank-badge { background: var(--silver); color: #000; }
+        .rank-3 .rank-badge { background: var(--bronze); color: #000; }
         
-        .score-input { text-align: center; background: #111; border: 1px solid #444; width: 60px; padding: 8px; font-size: 1.1rem; }
+        /* Inputs vs View Only */
+        .score-input { text-align: center; background: #111; border: 1px solid #444; width: 100%; padding: 8px; font-size: 1.1rem; }
+        .score-display { text-align: center; font-size: 1.2rem; font-weight: bold; color: #888; display: block; width: 100%; }
+        
         .total-score { font-weight: bold; font-size: 1.1rem; min-width: 30px; text-align: right; }
         
         .dealer-icon { width: 20px; height: 20px; background: var(--dealer-color); border-radius: 50%; color: white; font-size: 10px; display: flex; justify-content: center; align-items: center; opacity: 0; transition: opacity 0.3s; }
         .player-row.is-dealer .dealer-icon { opacity: 1; }
 
-        /* Views Utility */
         .view { display: none; }
         .view.active { display: block; animation: fadeIn 0.4s; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
@@ -46,8 +58,11 @@
         #qr-container img { border-radius: 8px; border: 4px solid white; }
         
         /* Stats & History */
-        .stats-card { background: #2c2c2c; padding: 15px; margin-bottom: 10px; border-radius: 8px; text-align: center; }
-        .stats-val { font-size: 1.5rem; color: var(--gold); font-weight: bold; }
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+        .stats-card { background: #2c2c2c; padding: 15px; border-radius: 8px; text-align: center; display: flex; flex-direction: column; justify-content: center; }
+        .stats-card.full-width { grid-column: span 2; }
+        .stats-val { font-size: 1.3rem; color: var(--gold); font-weight: bold; margin: 5px 0; }
+        .stats-label { font-size: 0.8rem; color: var(--text-secondary); }
 
         .history-container { margin-top: 20px; padding-top: 20px; border-top: 1px solid #333; overflow-x: auto; }
         table.history-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; text-align: center; }
@@ -55,12 +70,10 @@
         .history-table td { padding: 8px 5px; border-bottom: 1px solid #333; color: #ddd; }
         .history-table tr:last-child td { border-bottom: none; }
 
-        /* Modal / Overlay */
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 100; display: none; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box; }
         .modal-content { background: var(--card-bg); width: 100%; max-width: 500px; padding: 20px; border-radius: var(--radius); max-height: 80vh; overflow-y: auto; position: relative; }
         .close-btn { position: absolute; top: 10px; right: 15px; font-size: 1.5rem; cursor: pointer; color: #888; background: none; border: none; padding: 0; width: auto; margin:0;}
-
-        /* Selectable Player List in Login */
+        
         .claim-btn { display: block; width: 100%; background: #333; text-align: left; padding: 12px; margin-bottom: 8px; border-radius: 8px; border: 1px solid #444; color: white; }
         .claim-btn:hover { background: #444; border-color: var(--accent); }
     </style>
@@ -87,9 +100,7 @@
 
         <input type="text" id="inp-name" placeholder="Dein Name" maxlength="12">
         <div style="height: 10px;"></div>
-        
         <button id="btn-create" onclick="createGame()">Neues Spiel erstellen</button>
-        
         <div id="join-section">
             <div style="display: flex; gap: 10px; align-items: center; margin-top: 15px;">
                 <div style="flex:1; height: 1px; background: #333;"></div>
@@ -105,9 +116,8 @@
         <h2>Lobby</h2>
         <div class="code-display" id="lobby-code">ABCD</div>
         <div id="qr-container"></div>
-        
         <div id="lobby-list" style="margin-top: 20px;"></div>
-
+        
         <div id="host-add-player" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #333;">
             <div style="display: flex; gap: 10px;">
                 <input type="text" id="inp-bot-name" placeholder="Name für Offline-Spieler" style="margin-bottom: 0;">
@@ -120,28 +130,29 @@
     </div>
 
     <div id="view-game" class="container view">
+        <div style="text-align: center; margin-bottom: 15px;">
+             <span style="background: #333; color: var(--accent); padding: 5px 15px; border-radius: 4px; font-family: monospace; font-size: 1.2rem; letter-spacing: 2px; border: 1px solid #444;" id="game-code-display">ABCD</span>
+        </div>
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
             <h2 id="round-display" style="margin:0;">Runde 1</h2>
-            <div>
-                <button class="secondary small" onclick="toggleStats(true)">📊 Stats</button>
-            </div>
+            <button class="secondary small" onclick="toggleStats(true)">📊 Stats</button>
         </div>
         
         <div id="game-list"></div>
 
-        <button onclick="submitRound()">Runde eintragen</button>
+        <button id="btn-submit" onclick="submitRound()">Runde eintragen</button>
+        <div id="readonly-msg" class="info-text" style="display:none; margin-top:15px; color: var(--gold)">Nur der Host trägt Punkte ein.</div>
 
         <div class="history-container">
             <div class="info-text" style="text-align: left; font-size: 0.8rem; margin-bottom: 10px;">Verlauf</div>
-            <table class="history-table" id="history-table">
-                </table>
+            <table class="history-table" id="history-table"></table>
         </div>
 
         <button class="danger" id="btn-end" onclick="finishGame()" style="margin-top: 30px; display: none; font-size: 0.8rem; padding: 10px;">Spiel beenden</button>
     </div>
 
     <div id="view-stats" class="container view">
-        <h1>Spielende!</h1>
+        <h1>Auswertung</h1>
         <div id="stats-content"></div>
         <div id="host-controls" style="display:none">
             <button onclick="restartGame()">Neustart (Gleiche Spieler)</button>
@@ -162,21 +173,18 @@
         const savedName = localStorage.getItem('scorekeeper_name');
         if (savedName) document.getElementById('inp-name').value = savedName;
 
-        // Auto-Detect Code and Check Room
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.has('room')) {
             const code = urlParams.get('room');
             document.getElementById('inp-code').value = code;
-            socket.emit('checkRoom', code); // Prüfe auf freie Offline-Spieler
+            socket.emit('checkRoom', code);
         }
 
-        // Event listener für manuelle Code Eingabe
         function checkCode() {
             const code = document.getElementById('inp-code').value;
             if(code.length === 4) socket.emit('checkRoom', code.toUpperCase());
         }
 
-        // --- NAVIGATION ---
         function showView(viewId) {
             document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
             document.getElementById(viewId).classList.add('active');
@@ -190,7 +198,6 @@
             }
         }
 
-        // --- ACTIONS ---
         function createGame() {
             const name = document.getElementById('inp-name').value.trim();
             if (!name) return alert('Bitte Namen eingeben');
@@ -209,7 +216,6 @@
             const name = document.getElementById('inp-name').value.trim();
             const code = document.getElementById('inp-code').value.trim();
             if (!name || !code) return alert('Name und Code erforderlich');
-            
             localStorage.setItem('scorekeeper_name', name);
             socket.emit('joinGame', { roomCode: code, playerName: name, userId: myPermanentId });
         }
@@ -234,11 +240,10 @@
                 if (val === '' || val === '0') zeroCount++;
             });
             if (zeroCount > 1) { alert('Nur eine "0" erlaubt!'); return; }
-            socket.emit('submitRound', { roomCode: currentRoom.code, roundScores: scores });
+            // WICHTIG: userId mitsenden zur Prüfung
+            socket.emit('submitRound', { roomCode: currentRoom.code, roundScores: scores, userId: myPermanentId });
         }
 
-        // --- SOCKET EVENTS ---
-        
         socket.on('roomInfo', ({ exists, availablePlayers }) => {
             if (exists && availablePlayers && availablePlayers.length > 0) {
                 const list = document.getElementById('claim-list');
@@ -246,7 +251,7 @@
                     `<button class="claim-btn" onclick="claimPlayer('${p.id}')">Als <b>${p.name}</b> beitreten</button>`
                 ).join('');
                 document.getElementById('claim-section').style.display = 'block';
-                document.getElementById('btn-create').style.display = 'none'; // Verstecke Create wenn man im Join Modus ist
+                document.getElementById('btn-create').style.display = 'none';
             } else {
                 document.getElementById('claim-section').style.display = 'none';
                 document.getElementById('btn-create').style.display = 'block';
@@ -264,27 +269,28 @@
             currentRoom = room;
             const isHost = (room.hostUserId === myPermanentId);
             
-            // Host Controls
             document.getElementById('btn-start').style.display = isHost ? 'block' : 'none';
             document.getElementById('wait-msg').style.display = isHost ? 'none' : 'block';
             document.getElementById('btn-end').style.display = isHost ? 'block' : 'none';
             document.getElementById('host-controls').style.display = isHost ? 'block' : 'none';
             document.getElementById('host-add-player').style.display = isHost ? 'block' : 'none';
 
+            // Game Control für Host vs Guest
+            document.getElementById('btn-submit').style.display = isHost ? 'block' : 'none';
+            document.getElementById('readonly-msg').style.display = isHost ? 'none' : 'block';
+
             if (room.status === 'lobby') {
                 showView('view-lobby');
                 renderLobby(room.players);
             } else if (room.status === 'playing') {
                 showView('view-game');
-                renderGame(room);
+                renderGame(room, isHost); // isHost wichtig für Inputs
                 renderHistory(room);
             } else if (room.status === 'finished') {
                 showView('view-stats');
                 document.getElementById('stats-content').innerHTML = generateStatsHtml(room);
             }
         });
-
-        // --- RENDER FUNKTIONEN ---
 
         function renderLobby(players) {
             document.getElementById('lobby-list').innerHTML = players.map(p => `
@@ -296,28 +302,42 @@
             document.getElementById('lobby-code').innerText = currentRoom.code;
         }
 
-        function renderGame(room) {
+        function renderGame(room, isHost) {
             document.getElementById('round-display').innerText = `Runde ${room.round}`;
+            document.getElementById('game-code-display').innerText = room.code;
+
             const sortedPlayers = [...room.players].sort((a, b) => a.total - b.total);
-            const leaderId = sortedPlayers[0]?.id; // Hier Nutzung von ID, da Bots keine UserId haben
             const dealerIndex = (room.round - 1) % room.players.length;
             const dealerId = room.players[dealerIndex]?.id;
 
             document.getElementById('game-list').innerHTML = sortedPlayers.map((p, index) => {
+                // Rank Logic
                 const rank = index + 1;
-                const isLeader = (p.id === leaderId);
+                let rankClass = '';
+                if(rank === 1) rankClass = 'rank-1';
+                else if(rank === 2) rankClass = 'rank-2';
+                else if(rank === 3) rankClass = 'rank-3';
+
                 const isDealer = (p.id === dealerId);
                 const isMe = (p.userId === myPermanentId);
                 
+                // Input vs Text Logic
+                let inputHtml = '';
+                if (isHost) {
+                    inputHtml = `<input type="number" pattern="[0-9]*" class="score-input" data-pid="${p.id}" placeholder="-">`;
+                } else {
+                    inputHtml = `<span class="score-display">-</span>`;
+                }
+
                 return `
-                <div class="player-row ${isLeader ? 'is-leader' : ''} ${isDealer ? 'is-dealer' : ''} ${isMe ? 'current-user' : ''}">
+                <div class="player-row ${rankClass} ${isDealer ? 'is-dealer' : ''} ${isMe ? 'current-user' : ''}">
                     <div class="rank-badge">${rank}</div>
                     <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
                         ${p.name}
                         <div class="dealer-icon">D</div>
                     </div>
                     <div class="total-score">${p.total}</div>
-                    <input type="number" pattern="[0-9]*" class="score-input" data-pid="${p.id}" placeholder="-">
+                    <div style="width: 60px;">${inputHtml}</div>
                 </div>
                 `;
             }).join('');
@@ -325,20 +345,16 @@
 
         function renderHistory(room) {
             const table = document.getElementById('history-table');
-            // Header erstellen
             let html = `<thead><tr><th style="width:30px">#</th>`;
             room.players.forEach(p => {
-                // Nur erste 3 Buchstaben anzeigen um Platz zu sparen
                 html += `<th>${p.name.substring(0,3)}</th>`;
             });
             html += `</tr></thead><tbody>`;
 
-            // Zeilen erstellen (Für jede vergangene Runde)
             for(let r = 0; r < room.round - 1; r++) {
                 html += `<tr><td>${r+1}</td>`;
                 room.players.forEach(p => {
                     const score = p.scores[r] !== undefined ? p.scores[r] : '-';
-                    // Null hervorheben
                     const style = score === 0 ? 'color: var(--accent); font-weight:bold;' : '';
                     html += `<td style="${style}">${score}</td>`;
                 });
@@ -353,38 +369,93 @@
             const winner = players[0];
             const loser = players[players.length - 1];
 
-            let mostZerosPlayer = null;
-            let maxZeros = -1;
-            
+            // Calculations
+            let mostZerosPlayer = null; let maxZeros = -1;
+            let lowestAvgPlayer = null; let minAvg = 999;
+            let stablePlayer = null; let minVariance = 999;
+            let worstRoundPlayer = null; let maxRoundScore = -1;
+
             players.forEach(p => {
-                const zeros = p.scores.filter(s => s === 0).length;
-                if(zeros > maxZeros) {
-                    maxZeros = zeros;
-                    mostZerosPlayer = p;
+                const scores = p.scores.filter(s => typeof s === 'number');
+                const zeros = scores.filter(s => s === 0).length;
+                
+                // Zeros
+                if(zeros > maxZeros) { maxZeros = zeros; mostZerosPlayer = p; }
+
+                // Avg
+                if(scores.length > 0) {
+                    const sum = scores.reduce((a,b)=>a+b,0);
+                    const avg = sum / scores.length;
+                    if(avg < minAvg) { minAvg = avg; lowestAvgPlayer = p; }
+
+                    // Variance (Stabilität)
+                    const variance = scores.reduce((a,b)=>a + Math.pow(b-avg,2), 0) / scores.length;
+                    if(variance < minVariance && scores.length > 1) { minVariance = variance; stablePlayer = p; }
+
+                    // Worst Single Round
+                    const maxS = Math.max(...scores);
+                    if(maxS > maxRoundScore) { maxRoundScore = maxS; worstRoundPlayer = p; }
                 }
             });
 
-            let html = `
-                <div class="stats-card" style="border: 2px solid var(--gold)">
-                    <div>🏆 Gewinner</div>
+            let html = `<div class="stats-grid">`;
+            
+            // Winner (Full Width)
+            html += `
+                <div class="stats-card full-width" style="border: 2px solid var(--gold)">
+                    <div class="stats-label">🏆 Gewinner</div>
                     <div class="stats-val">${winner.name}</div>
-                    <div>${winner.total} Punkte</div>
-                </div>
-                <div class="stats-card">
-                    <div>📉 Letzter Platz</div>
-                    <div class="stats-val" style="color: var(--danger)">${loser.name}</div>
-                    <div>${loser.total} Punkte</div>
-                </div>
-            `;
+                    <div class="stats-label">${winner.total} Punkte</div>
+                </div>`;
 
+            // Verlierer & Zeros
+            html += `
+                <div class="stats-card">
+                    <div class="stats-label">📉 Letzter Platz</div>
+                    <div class="stats-val" style="color: var(--danger)">${loser.name}</div>
+                    <div class="stats-label">${loser.total} Punkte</div>
+                </div>`;
+            
             if(maxZeros > 0) {
                 html += `
                 <div class="stats-card">
-                    <div>⭕ Zero King</div>
+                    <div class="stats-label">⭕ Zero King</div>
                     <div class="stats-val" style="color: var(--accent)">${mostZerosPlayer.name}</div>
-                    <div>${maxZeros}x Null</div>
+                    <div class="stats-label">${maxZeros}x Null</div>
                 </div>`;
             }
+
+            // Durchschnitt
+            if(lowestAvgPlayer) {
+                html += `
+                <div class="stats-card">
+                    <div class="stats-label">📐 Bester Schnitt</div>
+                    <div class="stats-val">${minAvg.toFixed(1)}</div>
+                    <div class="stats-label">${lowestAvgPlayer.name}</div>
+                </div>`;
+            }
+
+            // Stabilität
+            if(stablePlayer) {
+                html += `
+                <div class="stats-card">
+                    <div class="stats-label">⚓ Der Konstante</div>
+                    <div class="stats-val" style="font-size:1rem;">${stablePlayer.name}</div>
+                    <div class="stats-label">Wenig Schwankung</div>
+                </div>`;
+            }
+
+            // Pechvogel
+            if(worstRoundPlayer && maxRoundScore > 0) {
+                html += `
+                <div class="stats-card">
+                    <div class="stats-label">💥 Übelste Runde</div>
+                    <div class="stats-val" style="color: var(--danger)">${maxRoundScore}</div>
+                    <div class="stats-label">${worstRoundPlayer.name}</div>
+                </div>`;
+            }
+
+            html += `</div>`; // End Grid
             return html;
         }
     </script>

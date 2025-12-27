@@ -22,11 +22,11 @@ function generateRoomCode() {
 }
 
 io.on('connection', (socket) => {
-    // --- NEU: Vorab-Check für den Login-Screen ---
+    
+    // Check für Offline-Spieler beim Login
     socket.on('checkRoom', (roomCode) => {
         const room = rooms[roomCode];
         if (room) {
-            // Sende Liste der verfügbaren (unclaimed) Bot-Spieler
             const availablePlayers = room.players.filter(p => p.isBot && !p.userId);
             socket.emit('roomInfo', { exists: true, availablePlayers });
         } else {
@@ -53,37 +53,29 @@ io.on('connection', (socket) => {
         joinRoom(socket, roomCode, hostName, userId);
     });
 
-    // --- NEU: Offline-Spieler hinzufügen ---
     socket.on('addPlaceholder', ({ roomCode, name }) => {
         const room = rooms[roomCode];
-        // Nur Host darf das, oder jeder? Wir lassen es den Host machen.
-        // Check via socket.id ist hier einfacher, aber userId sicherer. 
-        // Der Einfachheit halber: Wenn Raum in Lobby ist, darf man adden.
-        if (!room || room.status !== 'lobby') return;
-
+        if (!room) return;
+        // Host-Check hier optional, aber UI verhindert es eh
         room.players.push({
-            id: 'bot-' + Date.now(), // Temporäre ID
-            userId: null,            // Kein echter User verknüpft
+            id: 'bot-' + Date.now(),
+            userId: null,
             name: name,
             scores: [],
             total: 0,
-            isBot: true              // Markierung
+            isBot: true
         });
         io.to(roomCode).emit('gameState', room);
     });
 
-    // --- NEU: Spieler übernehmen (Claiming) ---
     socket.on('claimPlayer', ({ roomCode, playerId, userId }) => {
         const room = rooms[roomCode];
         if (!room) return;
-
         const player = room.players.find(p => p.id === playerId);
         if (player && player.isBot && !player.userId) {
-            // Übernahme!
             player.userId = userId;
-            player.id = socket.id; // Socket aktualisieren
-            player.isBot = false;  // Ist jetzt ein echter Mensch
-            
+            player.id = socket.id;
+            player.isBot = false;
             socket.join(roomCode);
             io.to(roomCode).emit('gameState', room);
         }
@@ -102,9 +94,16 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('submitRound', ({ roomCode, roundScores }) => {
+    // --- UPDATE: Schreibschutz ---
+    socket.on('submitRound', ({ roomCode, roundScores, userId }) => { // userId wird mitgesendet
         const room = rooms[roomCode];
         if (!room) return;
+
+        // SICHERHEIT: Nur der Host darf schreiben!
+        if (room.hostUserId !== userId) {
+            socket.emit('errorMsg', 'Nur der Host darf Punkte eintragen!');
+            return;
+        }
 
         let zeroCount = 0;
         const parsedScores = {};
@@ -123,7 +122,6 @@ io.on('connection', (socket) => {
         }
 
         room.players.forEach(p => {
-            // Wichtig: Auch Bots bekommen Punkte (Host hat sie eingetragen)
             const score = parsedScores[p.id] !== undefined ? parsedScores[p.id] : 0;
             p.scores.push(score);
             p.total += score;
@@ -167,11 +165,11 @@ function joinRoom(socket, roomCode, playerName, userId) {
         return;
     }
 
-    if (room.status !== 'lobby') {
-        socket.emit('errorMsg', 'Spiel läuft bereits.');
-        return;
-    }
-
+    // --- UPDATE: Zutritt auch während Spiel (View Only) ---
+    // Wir lassen sie rein, fügen sie der Liste hinzu.
+    // Da sie aber keine Schreibrechte haben und Score 0 startet, ist das ok.
+    // Optional: Wenn man später joint, könnte man "Strafe" bekommen, aber wir starten bei 0.
+    
     room.players.push({
         id: socket.id,
         userId: userId,
