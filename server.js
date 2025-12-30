@@ -10,6 +10,7 @@ const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Datenspeicher (Achtung: Wird bei Server-Neustart geleert!)
 const rooms = {};
 
 function generateRoomCode() {
@@ -23,7 +24,6 @@ function generateRoomCode() {
 
 io.on('connection', (socket) => {
     
-    // Check für Offline-Spieler beim Login
     socket.on('checkRoom', (roomCode) => {
         const room = rooms[roomCode];
         if (room) {
@@ -56,9 +56,10 @@ io.on('connection', (socket) => {
     socket.on('addPlaceholder', ({ roomCode, name }) => {
         const room = rooms[roomCode];
         if (!room) return;
-        // Host-Check hier optional, aber UI verhindert es eh
+        
+        // Bots bekommen eine permanente Bot-ID
         room.players.push({
-            id: 'bot-' + Date.now(),
+            id: 'bot-' + Date.now() + Math.random(), // Stable Bot ID (nutzen wir auch als SocketID Placeholder)
             userId: null,
             name: name,
             scores: [],
@@ -74,7 +75,7 @@ io.on('connection', (socket) => {
         const player = room.players.find(p => p.id === playerId);
         if (player && player.isBot && !player.userId) {
             player.userId = userId;
-            player.id = socket.id;
+            player.id = socket.id; // Live Socket Update
             player.isBot = false;
             socket.join(roomCode);
             io.to(roomCode).emit('gameState', room);
@@ -94,35 +95,48 @@ io.on('connection', (socket) => {
         }
     });
 
-    // --- UPDATE: Schreibschutz ---
-    socket.on('submitRound', ({ roomCode, roundScores, userId }) => { // userId wird mitgesendet
+    // --- CRITICAL FIX: STABLE ID MAPPING ---
+    socket.on('submitRound', ({ roomCode, roundScores, userId }) => {
         const room = rooms[roomCode];
-        if (!room) return;
+        
+        // 1. Fallback: Server Neustart
+        if (!room) {
+            socket.emit('errorMsg', 'FEHLER: Raum nicht gefunden (Server Neustart?). Bitte Seite neu laden oder neuen Raum erstellen.');
+            return;
+        }
 
-        // SICHERHEIT: Nur der Host darf schreiben!
+        // 2. Security Check
         if (room.hostUserId !== userId) {
             socket.emit('errorMsg', 'Nur der Host darf Punkte eintragen!');
             return;
         }
 
         let zeroCount = 0;
-        const parsedScores = {};
+        const scoresToSave = {};
 
-        for (let playerId in roundScores) {
-            let val = roundScores[playerId];
+        // Wir iterieren durch die ECHTEN Spieler im Raum und suchen ihre Punkte im Input
+        // Dies verhindert, dass alte IDs oder Müll-Daten verarbeitet werden.
+        for (const p of room.players) {
+            // Identifier ist userId (für Menschen) oder id (für Bots)
+            const stableId = p.userId || p.id;
+            
+            let val = roundScores[stableId]; // Frontend muss stableId senden!
+            
             let num = (val === '' || val === null) ? 0 : parseInt(val);
             if (isNaN(num)) num = 0;
+            
             if (num === 0) zeroCount++;
-            parsedScores[playerId] = num;
+            scoresToSave[p.id] = num; // Temporär speichern
         }
 
         if (zeroCount > 1) {
-            socket.emit('errorMsg', 'Maximal eine "0" pro Runde erlaubt!');
+            socket.emit('errorMsg', 'Regelverstoß: Maximal eine "0" (oder leeres Feld) pro Runde erlaubt!');
             return;
         }
 
+        // Speichern
         room.players.forEach(p => {
-            const score = parsedScores[p.id] !== undefined ? parsedScores[p.id] : 0;
+            const score = scoresToSave[p.id]; // Hier nutzen wir den internen Pointer
             p.scores.push(score);
             p.total += score;
         });
@@ -159,17 +173,14 @@ function joinRoom(socket, roomCode, playerName, userId) {
 
     const existingPlayer = room.players.find(p => p.userId === userId);
     if (existingPlayer) {
+        // Reconnect: Update Socket ID
         existingPlayer.id = socket.id;
         socket.join(roomCode);
         socket.emit('gameState', room);
         return;
     }
 
-    // --- UPDATE: Zutritt auch während Spiel (View Only) ---
-    // Wir lassen sie rein, fügen sie der Liste hinzu.
-    // Da sie aber keine Schreibrechte haben und Score 0 startet, ist das ok.
-    // Optional: Wenn man später joint, könnte man "Strafe" bekommen, aber wir starten bei 0.
-    
+    // View Only Join während Spiel
     room.players.push({
         id: socket.id,
         userId: userId,
