@@ -10,7 +10,6 @@ const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Datenspeicher (Achtung: Wird bei Server-Neustart geleert!)
 const rooms = {};
 
 function generateRoomCode() {
@@ -27,6 +26,7 @@ io.on('connection', (socket) => {
     socket.on('checkRoom', (roomCode) => {
         const room = rooms[roomCode];
         if (room) {
+            // Nur echte Spieler (keine Bots, keine Zuschauer) anzeigen, die übernommen werden können
             const availablePlayers = room.players.filter(p => p.isBot && !p.userId);
             socket.emit('roomInfo', { exists: true, availablePlayers });
         } else {
@@ -57,14 +57,14 @@ io.on('connection', (socket) => {
         const room = rooms[roomCode];
         if (!room) return;
         
-        // Bots bekommen eine permanente Bot-ID
         room.players.push({
-            id: 'bot-' + Date.now() + Math.random(), // Stable Bot ID (nutzen wir auch als SocketID Placeholder)
+            id: 'bot-' + Date.now() + Math.random(),
             userId: null,
             name: name,
             scores: [],
             total: 0,
-            isBot: true
+            isBot: true,
+            isSpectator: false
         });
         io.to(roomCode).emit('gameState', room);
     });
@@ -75,7 +75,7 @@ io.on('connection', (socket) => {
         const player = room.players.find(p => p.id === playerId);
         if (player && player.isBot && !player.userId) {
             player.userId = userId;
-            player.id = socket.id; // Live Socket Update
+            player.id = socket.id;
             player.isBot = false;
             socket.join(roomCode);
             io.to(roomCode).emit('gameState', room);
@@ -95,38 +95,34 @@ io.on('connection', (socket) => {
         }
     });
 
-    // --- CRITICAL FIX: STABLE ID MAPPING ---
     socket.on('submitRound', ({ roomCode, roundScores, userId }) => {
         const room = rooms[roomCode];
         
-        // 1. Fallback: Server Neustart
         if (!room) {
-            socket.emit('errorMsg', 'FEHLER: Raum nicht gefunden (Server Neustart?). Bitte Seite neu laden oder neuen Raum erstellen.');
+            socket.emit('errorMsg', 'FEHLER: Raum nicht gefunden. Bitte Seite neu laden.');
             return;
         }
 
-        // 2. Security Check
         if (room.hostUserId !== userId) {
             socket.emit('errorMsg', 'Nur der Host darf Punkte eintragen!');
             return;
         }
 
+        // --- FIX: Nur AKTIVE Spieler validieren (Zuschauer ignorieren) ---
+        const activePlayers = room.players.filter(p => !p.isSpectator);
+        
         let zeroCount = 0;
         const scoresToSave = {};
 
-        // Wir iterieren durch die ECHTEN Spieler im Raum und suchen ihre Punkte im Input
-        // Dies verhindert, dass alte IDs oder Müll-Daten verarbeitet werden.
-        for (const p of room.players) {
-            // Identifier ist userId (für Menschen) oder id (für Bots)
+        for (const p of activePlayers) {
             const stableId = p.userId || p.id;
-            
-            let val = roundScores[stableId]; // Frontend muss stableId senden!
+            let val = roundScores[stableId];
             
             let num = (val === '' || val === null) ? 0 : parseInt(val);
             if (isNaN(num)) num = 0;
             
             if (num === 0) zeroCount++;
-            scoresToSave[p.id] = num; // Temporär speichern
+            scoresToSave[p.id] = num;
         }
 
         if (zeroCount > 1) {
@@ -134,9 +130,9 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // Speichern
-        room.players.forEach(p => {
-            const score = scoresToSave[p.id]; // Hier nutzen wir den internen Pointer
+        // Speichern (nur für aktive Spieler)
+        activePlayers.forEach(p => {
+            const score = scoresToSave[p.id];
             p.scores.push(score);
             p.total += score;
         });
@@ -158,7 +154,13 @@ io.on('connection', (socket) => {
         if (room) {
             room.status = 'playing';
             room.round = 1;
-            room.players.forEach(p => { p.scores = []; p.total = 0; });
+            // Alle Scores resetten, aber Spieler behalten
+            room.players.forEach(p => { 
+                p.scores = []; 
+                p.total = 0; 
+                // Optional: Zuschauer kicken oder zu Spielern machen? 
+                // Wir lassen sie Zuschauer bleiben, außer sie rejoinen neu.
+            });
             io.to(roomCode).emit('gameState', room);
         }
     });
@@ -173,21 +175,23 @@ function joinRoom(socket, roomCode, playerName, userId) {
 
     const existingPlayer = room.players.find(p => p.userId === userId);
     if (existingPlayer) {
-        // Reconnect: Update Socket ID
         existingPlayer.id = socket.id;
         socket.join(roomCode);
         socket.emit('gameState', room);
         return;
     }
 
-    // View Only Join während Spiel
+    // --- FIX: Unterscheidung Spieler vs. Zuschauer ---
+    const isSpectator = (room.status === 'playing');
+
     room.players.push({
         id: socket.id,
         userId: userId,
         name: playerName,
         scores: [],
         total: 0,
-        isBot: false
+        isBot: false,
+        isSpectator: isSpectator // NEU: Flag setzen
     });
 
     socket.join(roomCode);
